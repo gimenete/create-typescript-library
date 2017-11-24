@@ -15,6 +15,16 @@ const fs = require("fs-extra");
 const inquirer = require("inquirer");
 const path = require("path");
 const rimraf = require("rimraf");
+var rumtime;
+(function (rumtime) {
+    rumtime["WEBAPP"] = "Web application";
+    rumtime["NODEJS"] = "Node.js application";
+})(rumtime || (rumtime = {}));
+var appType;
+(function (appType) {
+    appType["LIBRARY"] = "Library";
+    appType["STANDALONE"] = "Standalone application";
+})(appType || (appType = {}));
 // tslint:disable-next-line:no-var-requires
 const dashify = require('dashify');
 // tslint:disable-next-line:no-var-requires
@@ -77,11 +87,18 @@ const rm = (dir) => {
                 filter: (name) => dashify(name)
             },
             {
-                name: 'rollup',
+                name: 'rumtime',
                 type: 'list',
                 message: 'Is this a web app or a Node.js app?',
-                choices: ['webapp', 'nodejs'],
-                default: 'webapp'
+                choices: [rumtime.WEBAPP, rumtime.NODEJS],
+                default: rumtime.WEBAPP
+            },
+            {
+                name: 'appType',
+                type: 'list',
+                message: 'Is this a library?',
+                choices: [appType.LIBRARY, appType.STANDALONE],
+                default: appType.LIBRARY
             },
             {
                 name: 'coveralls',
@@ -121,6 +138,7 @@ function setupLibrary(answers) {
         const usermail = (yield exec("git config user.email")).trim();
         yield removeItems();
         yield modifyContents(answers.library, username, usermail);
+        yield modifyAdditionalFiles(answers);
         yield renameItems(answers.library);
         yield finalize();
         console.log(colors.cyan("OK, you're all set. Happy coding!! ;)\n"));
@@ -184,6 +202,56 @@ function renameItems(libraryName) {
         console.log("\n");
     });
 }
+function modifyAdditionalFiles(answers) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const jsonPackage = path.resolve(basedir, "package.json");
+        const pkg = JSON.parse(yield fs.readFile(jsonPackage, 'utf8'));
+        // Remove post-install command
+        delete pkg.scripts.postinstall;
+        if (answers.rumtime === rumtime.NODEJS) {
+            delete pkg.module;
+            delete pkg.scripts.prebuild;
+            pkg.main = `compiled/${answers.library}.js`;
+            pkg.scripts.build = pkg.scripts.build.replace('&& rollup -c rollup.config.ts && rimraf compiled ', '');
+            pkg.scripts.start = 'tsc -w';
+            delete pkg.devDependencies.rollup;
+            delete pkg.devDependencies['rollup-plugin-commonjs'];
+            delete pkg.devDependencies['rollup-plugin-node-resolve'];
+            delete pkg.devDependencies['rollup-plugin-sourcemaps'];
+            yield fs.unlink(path.join(basedir, 'rollup.config.ts'));
+        }
+        if (!answers.commitizen) {
+            delete pkg.scripts.commit;
+            delete pkg.scripts['semantic-release'];
+            delete pkg.scripts['semantic-release-prepare'];
+            delete pkg.devDependencies.commitizen;
+            delete pkg.devDependencies['semantic-release'];
+            delete pkg.devDependencies['validate-commit-msg'];
+            delete pkg.devDependencies['cz-conventional-changelog'];
+            delete pkg.config;
+        }
+        if (!answers.coveralls) {
+            delete pkg.scripts['report-coverage'];
+            delete pkg.devDependencies.coveralls;
+        }
+        if (!answers.travis) {
+            yield fs.unlink(path.join(basedir, '.travis.yml'));
+        }
+        yield fs.unlink(path.join(basedir, 'code-of-conduct.md'));
+        yield rm(path.join(basedir, 'tools'));
+        yield fs.writeFile(jsonPackage, JSON.stringify(pkg, null, 2));
+        const tsconfigPath = path.resolve(basedir, "tsconfig.json");
+        const tsconfig = JSON.parse(yield fs.readFile(tsconfigPath, 'utf8'));
+        if (answers.appType === appType.STANDALONE) {
+            delete tsconfig.compilerOptions.declaration;
+            delete tsconfig.compilerOptions.declarationDir;
+        }
+        if (answers.rumtime === rumtime.NODEJS) {
+            tsconfig.compilerOptions.lib = tsconfig.compilerOptions.lib.filter((lib) => lib !== 'dom');
+        }
+        yield fs.writeFile(tsconfigPath, JSON.stringify(tsconfig, null, 2));
+    });
+}
 /**
  * Calls any external programs to finish setting up the library
  */
@@ -193,13 +261,6 @@ function finalize() {
         // Recreate Git folder
         const gitInitOutput = (yield exec('git init "' + path.resolve(basedir) + '"', { cwd: basedir }));
         console.log(colors.green(gitInitOutput.replace(/(\n|\r)+/g, "")));
-        // Remove post-install command
-        const jsonPackage = path.resolve(basedir, "package.json");
-        const pkg = JSON.parse(yield fs.readFile(jsonPackage, 'utf8'));
-        // Note: Add items to remove from the package file here
-        delete pkg.scripts.postinstall;
-        yield fs.writeFile(jsonPackage, JSON.stringify(pkg, null, 2));
-        console.log(colors.green("Postinstall script has been removed"));
         yield exec('npm install', { cwd: basedir });
         console.log("\n");
     });

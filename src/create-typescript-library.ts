@@ -7,6 +7,16 @@ import * as inquirer from "inquirer"
 import * as path from "path"
 import * as rimraf from 'rimraf'
 
+enum rumtime {
+  WEBAPP = 'Web application',
+  NODEJS = 'Node.js application'
+}
+
+enum appType {
+  LIBRARY = 'Library',
+  STANDALONE = 'Standalone application'
+}
+
 // tslint:disable-next-line:no-var-requires
 const dashify = require('dashify')
 // tslint:disable-next-line:no-var-requires
@@ -61,10 +71,11 @@ const rm = (dir: string) => {
 
 interface IAnswers {
   library: string,
-  rollup: boolean,
+  rumtime: rumtime,
   coveralls: boolean,
   travis: boolean,
-  commitizen: boolean
+  commitizen: boolean,
+  appType: appType
 }
 
 ;(async () => {
@@ -78,11 +89,18 @@ interface IAnswers {
         filter: (name: string) => dashify(name)
       },
       {
-        name: 'rollup',
+        name: 'rumtime',
         type: 'list',
         message: 'Is this a web app or a Node.js app?',
-        choices: ['webapp', 'nodejs'],
-        default: 'webapp'
+        choices: [rumtime.WEBAPP, rumtime.NODEJS],
+        default: rumtime.WEBAPP
+      },
+      {
+        name: 'appType',
+        type: 'list',
+        message: 'Is this a library?',
+        choices: [appType.LIBRARY, appType.STANDALONE],
+        default: appType.LIBRARY
       },
       {
         name: 'coveralls',
@@ -132,6 +150,8 @@ async function setupLibrary(answers: IAnswers) {
   await removeItems()
 
   await modifyContents(answers.library, username, usermail)
+
+  await modifyAdditionalFiles(answers)
 
   await renameItems(answers.library)
 
@@ -205,6 +225,67 @@ async function renameItems(libraryName: string) {
   console.log("\n")
 }
 
+async function modifyAdditionalFiles(answers: IAnswers) {
+  const jsonPackage = path.resolve(basedir, "package.json")
+  const pkg = JSON.parse(await fs.readFile(jsonPackage, 'utf8'))
+
+  // Remove post-install command
+  delete pkg.scripts.postinstall
+
+  if (answers.rumtime === rumtime.NODEJS) {
+    delete pkg.module
+    delete pkg.scripts.prebuild
+    pkg.main = `compiled/${answers.library}.js`
+    pkg.scripts.build = pkg.scripts.build.replace('&& rollup -c rollup.config.ts && rimraf compiled ', '')
+    pkg.scripts.start = 'tsc -w'
+    delete pkg.devDependencies.rollup
+    delete pkg.devDependencies['rollup-plugin-commonjs']
+    delete pkg.devDependencies['rollup-plugin-node-resolve']
+    delete pkg.devDependencies['rollup-plugin-sourcemaps']
+
+    await fs.unlink(path.join(basedir, 'rollup.config.ts'))
+  }
+
+  if (!answers.commitizen) {
+    delete pkg.scripts.commit
+    delete pkg.scripts['semantic-release']
+    delete pkg.scripts['semantic-release-prepare']
+    delete pkg.devDependencies.commitizen
+    delete pkg.devDependencies['semantic-release']
+    delete pkg.devDependencies['validate-commit-msg']
+    delete pkg.devDependencies['cz-conventional-changelog']
+    delete pkg.config
+
+  }
+
+  if (!answers.coveralls) {
+    delete pkg.scripts['report-coverage']
+    delete pkg.devDependencies.coveralls
+  }
+
+  if (!answers.travis) {
+    await fs.unlink(path.join(basedir, '.travis.yml'))
+  }
+
+  await fs.unlink(path.join(basedir, 'code-of-conduct.md'))
+  await rm(path.join(basedir, 'tools'))
+  await fs.writeFile(jsonPackage, JSON.stringify(pkg, null, 2))
+
+  const tsconfigPath = path.resolve(basedir, "tsconfig.json")
+  const tsconfig = JSON.parse(await fs.readFile(tsconfigPath, 'utf8'))
+
+  if (answers.appType === appType.STANDALONE) {
+    delete tsconfig.compilerOptions.declaration
+    delete tsconfig.compilerOptions.declarationDir
+  }
+
+  if (answers.rumtime === rumtime.NODEJS) {
+    tsconfig.compilerOptions.lib = tsconfig.compilerOptions.lib.filter((lib: string) => lib !== 'dom')
+  }
+
+  await fs.writeFile(tsconfigPath, JSON.stringify(tsconfig, null, 2))
+}
+
 /**
  * Calls any external programs to finish setting up the library
  */
@@ -214,16 +295,6 @@ async function finalize() {
   // Recreate Git folder
   const gitInitOutput = (await exec('git init "' + path.resolve(basedir) + '"', { cwd: basedir }))
   console.log(colors.green(gitInitOutput.replace(/(\n|\r)+/g, "")))
-
-  // Remove post-install command
-  const jsonPackage = path.resolve(basedir, "package.json")
-  const pkg = JSON.parse(await fs.readFile(jsonPackage, 'utf8'))
-
-  // Note: Add items to remove from the package file here
-  delete pkg.scripts.postinstall
-
-  await fs.writeFile(jsonPackage, JSON.stringify(pkg, null, 2))
-  console.log(colors.green("Postinstall script has been removed"))
 
   await exec('npm install', { cwd: basedir })
 
