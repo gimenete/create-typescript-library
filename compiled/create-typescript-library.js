@@ -215,6 +215,7 @@ function modifyAdditionalFiles(answers) {
             pkg.scripts.build = pkg.scripts.build.replace('&& rollup -c rollup.config.ts && rimraf compiled ', '');
             pkg.scripts.start = 'tsc -w';
             delete pkg.devDependencies.rollup;
+            delete pkg.devDependencies.rimraf;
             delete pkg.devDependencies['rollup-plugin-commonjs'];
             delete pkg.devDependencies['rollup-plugin-node-resolve'];
             delete pkg.devDependencies['rollup-plugin-sourcemaps'];
@@ -234,6 +235,10 @@ function modifyAdditionalFiles(answers) {
             delete pkg.scripts['report-coverage'];
             delete pkg.devDependencies.coveralls;
         }
+        delete pkg.devDependencies.prompt;
+        delete pkg.devDependencies.colors;
+        delete pkg.devDependencies['replace-in-file'];
+        delete pkg.devDependencies['lodash.camelcase'];
         if (!answers.travis) {
             yield fs.unlink(path.join(basedir, '.travis.yml'));
         }
