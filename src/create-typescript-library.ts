@@ -287,6 +287,7 @@ async function modifyAdditionalFiles(answers: IAnswers) {
 
   if (answers.rumtime === rumtime.NODEJS) {
     tsconfig.compilerOptions.lib = tsconfig.compilerOptions.lib.filter((lib: string) => lib !== 'dom')
+    tsconfig.compilerOptions.module = 'commonjs'
   }
 
   await fs.writeFile(tsconfigPath, JSON.stringify(tsconfig, null, 2))
