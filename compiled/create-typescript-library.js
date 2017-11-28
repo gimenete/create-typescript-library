@@ -211,7 +211,7 @@ function modifyAdditionalFiles(answers) {
         if (answers.rumtime === rumtime.NODEJS) {
             delete pkg.module;
             delete pkg.scripts.prebuild;
-            pkg.main = `compiled/${answers.library}.js`;
+            pkg.main = `dist/${answers.library}.js`;
             pkg.scripts.build = pkg.scripts.build.replace('&& rollup -c rollup.config.ts && rimraf compiled ', '');
             pkg.scripts.start = 'tsc -w';
             delete pkg.devDependencies.rollup;
@@ -220,6 +220,9 @@ function modifyAdditionalFiles(answers) {
             delete pkg.devDependencies['rollup-plugin-node-resolve'];
             delete pkg.devDependencies['rollup-plugin-sourcemaps'];
             yield fs.unlink(path.join(basedir, 'rollup.config.ts'));
+        }
+        else {
+            delete pkg.devDependencies['@types/node'];
         }
         if (!answers.commitizen) {
             delete pkg.scripts.commit;
@@ -253,6 +256,8 @@ function modifyAdditionalFiles(answers) {
         }
         if (answers.rumtime === rumtime.NODEJS) {
             tsconfig.compilerOptions.lib = tsconfig.compilerOptions.lib.filter((lib) => lib !== 'dom');
+            tsconfig.compilerOptions.module = 'commonjs';
+            tsconfig.compilerOptions.outDir = 'dist';
         }
         yield fs.writeFile(tsconfigPath, JSON.stringify(tsconfig, null, 2));
     });

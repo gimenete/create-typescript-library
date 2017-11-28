@@ -235,7 +235,7 @@ async function modifyAdditionalFiles(answers: IAnswers) {
   if (answers.rumtime === rumtime.NODEJS) {
     delete pkg.module
     delete pkg.scripts.prebuild
-    pkg.main = `compiled/${answers.library}.js`
+    pkg.main = `dist/${answers.library}.js`
     pkg.scripts.build = pkg.scripts.build.replace('&& rollup -c rollup.config.ts && rimraf compiled ', '')
     pkg.scripts.start = 'tsc -w'
     delete pkg.devDependencies.rollup
@@ -245,6 +245,8 @@ async function modifyAdditionalFiles(answers: IAnswers) {
     delete pkg.devDependencies['rollup-plugin-sourcemaps']
 
     await fs.unlink(path.join(basedir, 'rollup.config.ts'))
+  } else {
+    delete pkg.devDependencies['@types/node']
   }
 
   if (!answers.commitizen) {
@@ -288,6 +290,7 @@ async function modifyAdditionalFiles(answers: IAnswers) {
   if (answers.rumtime === rumtime.NODEJS) {
     tsconfig.compilerOptions.lib = tsconfig.compilerOptions.lib.filter((lib: string) => lib !== 'dom')
     tsconfig.compilerOptions.module = 'commonjs'
+    tsconfig.compilerOptions.outDir = 'dist'
   }
 
   await fs.writeFile(tsconfigPath, JSON.stringify(tsconfig, null, 2))
